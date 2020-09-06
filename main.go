@@ -16,8 +16,8 @@ import (
 func main() {
 	listen := flag.String("listen", ":10000", "listen")
 	network := flag.String("network", "tcp", "")
-	notlsaction := flag.String("notlsaction", "notls", "")
-	tlsaction := flag.String("tlsaction", "dunno", "")
+	notlsaction := flag.String("notls", "reject", "")
+	tlsaction := flag.String("tls", "dunno", "")
 	flag.Parse()
 
 	listener, err := net.Listen(*network, *listen)
@@ -41,7 +41,6 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-	out:
 		for {
 			con, err := listener.Accept()
 			if err != nil {
@@ -50,7 +49,7 @@ func main() {
 					return
 				default:
 					fmt.Fprintf(os.Stderr, "Accept failed: %v\n", err)
-					continue out
+					continue
 				}
 			}
 
@@ -102,5 +101,6 @@ func main() {
 			}()
 		}
 	}()
+
 	wg.Wait()
 }
