@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"os/user"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -18,15 +20,76 @@ func main() {
 	network := flag.String("network", "tcp", "")
 	notlsaction := flag.String("notls", "reject", "")
 	tlsaction := flag.String("tls", "dunno", "")
+
+	perm := flag.Uint64("perm", 0660, "unix socket permmissions (when -network unix)")
+	userU := flag.String("user", "", "unix socket user (when -network unix)")
+	groupU := flag.String("group", "", "unix socket group (when -network unix)")
 	flag.Parse()
+
+	if *network == "unix" {
+		syscall.Umask(0777)
+	}
 
 	listener, err := net.Listen(*network, *listen)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	wg := sync.WaitGroup{}
 
+	if *network == "unix" {
+		if err := os.Chmod(*listen, os.FileMode(*perm)); err != nil {
+			listener.Close()
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+
+		if *userU != "" {
+			userUID, err := user.Lookup(*userU)
+			if err != nil {
+				listener.Close()
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+
+			uid, err := strconv.ParseInt(userUID.Uid, 10, 31)
+			if err != nil {
+				listener.Close()
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+
+			if err := os.Chown(*listen, int(uid), -1); err != nil {
+				listener.Close()
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+		}
+
+		if *groupU != "" {
+			groupUID, err := user.LookupGroup(*groupU)
+			if err != nil {
+				listener.Close()
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+
+			gid, err := strconv.ParseInt(groupUID.Gid, 10, 31)
+			if err != nil {
+				listener.Close()
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+
+			if err := os.Chown(*listen, -1, int(gid)); err != nil {
+				listener.Close()
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+		}
+
+	}
+
+	wg := sync.WaitGroup{}
 	done := make(chan struct{})
 
 	sig := make(chan os.Signal)
